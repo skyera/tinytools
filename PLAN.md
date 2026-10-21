@@ -23,11 +23,10 @@ prunes exactly the missing eager lines (2 of 1481 on a default build). Windows
 `LoadLibrary` ignores `package.cpath`, so `imguikit` puts `build/out` on `PATH`
 before loading the binding.
 
-Repo as it exists today: `origin git@github.com:skyera/luajit-imgui-lab.git`,
-two tracked files plus `PLAN.md`. The GitHub repo still carries the old name,
-so existing clones, links and the local directory keep working until the rename
-is done deliberately (repo rename on GitHub + `git remote set-url` + the
-`lualab` cross-link).
+Repo: `git@github.com:skyera/tinytools.git` (renamed from `luajit-imgui-lab`;
+GitHub redirects the old URL, but clones should use the new one). The local
+working directory may still be named `luajit-imgui-lab`; that only affects
+shell paths, and the `lualab` cross-link should point at the new URL.
 
 Environment measured on the author's machine: LuaJIT `2.1.1720049189`,
 MinGW-w64 `g++ 13.2.0` (ucrt, posix-seh), CMake `3.29.2`, Ninja,
