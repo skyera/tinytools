@@ -1,0 +1,223 @@
+-- The only code that knows about build/out and how to open a window.
+--
+-- Loads the FFI binding (cimgui_glfw + glfw3) from a repo-local prefix, runs a
+-- frame loop the caller can configure, and always shuts down in reverse order.
+-- Docking and multi-viewport are deliberately off: this is a single-window app.
+
+local ffi = require "ffi"
+local timer = require "timer"
+
+local M = {}
+
+------------------------------------------------------------------- paths
+
+local function module_dir()
+  local src = debug.getinfo(1, "S").source:gsub("^@", "")
+  local dir = src:match("^(.*)[/\\][^/\\]*$") or "."
+  return dir
+end
+
+local function repo_root()
+  local dir = module_dir()
+  local parent = dir:match("^(.*)[/\\]lib$")
+  if parent then return parent end
+  if dir == "lib" then return "." end
+  if dir == "." then return "." end
+  return dir
+end
+
+M.root = repo_root()
+
+local function default_out()
+  return M.root .. "/build/out"
+end
+
+-- LoadLibrary on Windows does not consult package.cpath, so the directory has
+-- to be on PATH before any binding does ffi.load("glfw3").
+local function add_dll_dir(dir)
+  if ffi.os ~= "Windows" then return end
+
+  local ok = pcall(ffi.cdef, [[
+    uint32_t GetEnvironmentVariableA(const char *name, char *buffer, uint32_t size);
+    int32_t SetEnvironmentVariableA(const char *name, const char *value);
+  ]])
+  if not ok then return end
+
+  local buf = ffi.new("char[32768]")
+  local n = ffi.C.GetEnvironmentVariableA("PATH", buf, 32768)
+  if n == 0 or n >= 32768 then return end
+
+  local current = ffi.string(buf, n)
+  if (";" .. current .. ";"):find(";" .. dir .. ";", 1, true) then return end
+  ffi.C.SetEnvironmentVariableA("PATH", dir .. ";" .. current)
+end
+
+-- Prepends the build prefix to package.path and (on Windows) to PATH.
+-- Idempotent; safe to call before every launch.
+function M.require_env(out)
+  out = out or os.getenv("TINYTOOLS_OUT") or default_out()
+  out = out:gsub("\\", "/")
+
+  if M.out == out then return out end
+
+  package.path = out .. "/lua/?.lua;" .. out .. "/lua/?/init.lua;" .. package.path
+  package.cpath = out .. "/?.dll;" .. out .. "/?.so;" .. package.cpath
+  add_dll_dir(out)
+
+  M.out = out
+  return out
+end
+
+-- True when the binding can be loaded without opening a window.
+function M.available()
+  local ok_env, env_err = pcall(function() return M.require_env() end)
+  if not ok_env then return false, tostring(env_err) end
+
+  local out = M.out
+  local needed = ffi.os == "Windows"
+    and { "cimgui_glfw.dll", "glfw3.dll" }
+    or { "libcimgui_glfw.so", "libglfw.so.3" }
+  for _, name in ipairs(needed) do
+    local probe = io.open(out .. "/" .. name, "rb")
+    if not probe then
+      return false, out .. "/" .. name .. " missing (run `make libs`)"
+    end
+    probe:close()
+  end
+
+  local loaded, err = pcall(require, "imgui.glfw")
+  if not loaded then return false, tostring(err) end
+  return true
+end
+
+------------------------------------------------------------------- run
+
+local function destroy(ig_impl, window, glfw)
+  if ig_impl then pcall(function() ig_impl:destroy() end) end
+  if window then pcall(function() window:destroy() end) end
+  if glfw then pcall(function() glfw.terminate() end) end
+end
+
+-- opts:
+--   title, w, h, visible (default true), frames (stop after N), fps (default 60),
+--   vsync (default 1), draw(ig, ui)
+-- Returns 0, or nil plus a message when the window could not start.
+function M.run(opts)
+  opts = opts or {}
+  local draw = opts.draw
+  if type(draw) ~= "function" then
+    return nil, "imguikit.run needs a draw function"
+  end
+
+  local ready, why = M.available()
+  if not ready then
+    return nil, "ImGui binding unavailable: " .. tostring(why)
+  end
+
+  local glfw = require "glfw"
+  local gl = require "gl"
+  gl.set_loader(glfw)
+  local imgui = require "imgui.glfw"
+
+  local w = opts.w or 1180
+  local h = opts.h or 720
+  local visible = opts.visible ~= false
+
+  glfw.setErrorCallback(function(code, description)
+    io.stderr:write(string.format("GLFW error %s: %s\n", tostring(code),
+      ffi.string(description or "")))
+  end)
+
+  -- The binding's init() returns nothing and raises on failure.
+  local init_ok, init_err = pcall(glfw.init)
+  if not init_ok then
+    return nil, tostring(init_err)
+  end
+
+  if not visible then
+    glfw.hint(glfw.glfwc.GLFW_VISIBLE, 0)
+  end
+
+  local window_ok, window = pcall(glfw.Window, w, h, opts.title or "tinytools")
+  if not window_ok then
+    glfw.terminate()
+    return nil, tostring(window)
+  end
+  window:makeContextCurrent()
+  glfw.swapInterval(opts.vsync or 1)
+
+  local gl_functions, gl_constants = gl.libraries()
+  local ig_impl = imgui.Imgui_Impl_glfw_opengl3()
+
+  -- DPI and style, applied once.
+  local scale = 1
+  local scaled = pcall(function()
+    scale = tonumber(imgui.lib.ImGui_ImplGlfw_GetContentScaleForMonitor(glfw.getPrimaryMonitor()))
+  end)
+  if not scaled or not scale or scale <= 0 then scale = 1 end
+  pcall(function()
+    imgui.GetStyle():ScaleAllSizes(scale)
+    imgui.GetStyle().FontScaleDpi = scale
+  end)
+  pcall(function()
+    local io = imgui.GetIO()
+    io.ConfigFlags = imgui.lib.ImGuiConfigFlags_NavEnableKeyboard + io.ConfigFlags
+    io.ConfigDpiScaleFonts = true
+  end)
+
+  ig_impl:Init(window, true)
+
+  local target_fps = opts.fps or 60
+  local sleep_ms = 1000 / target_fps
+  local frame = 0
+  local fps = 0
+  local last = timer.now()
+  local failure
+
+  while not window:shouldClose() do
+    glfw.pollEvents()
+
+    if (tonumber(window:getAttrib(glfw.glfwc.GLFW_ICONIFIED)) or 0) ~= 0 then
+      pcall(function() imgui.lib.ImGui_ImplGlfw_Sleep(10) end)
+    else
+      window:makeContextCurrent()
+      gl_functions.glClear(gl_constants.GL_COLOR_BUFFER_BIT)
+
+      ig_impl:NewFrame()
+
+      local ui = {
+        frame = frame,
+        dt = timer.now() - last,
+        fps = fps,
+        window = window,
+        kit = M,
+      }
+      last = timer.now()
+
+      local drawn, draw_err = pcall(draw, imgui, ui)
+      if not drawn then
+        failure = draw_err
+        break
+      end
+
+      ig_impl:Render()
+      window:swapBuffers()
+
+      if not opts.dont_sleep then
+        pcall(function() imgui.lib.ImGui_ImplGlfw_Sleep(sleep_ms) end)
+      end
+
+      fps = ui.dt > 0 and (1 / ui.dt) or 0
+      frame = frame + 1
+    end
+
+    if opts.frames and frame >= opts.frames then break end
+  end
+
+  destroy(ig_impl, window, glfw)
+
+  if failure then return nil, tostring(failure) end
+  return 0, frame
+end
+
+return M

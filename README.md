@@ -1,2 +1,111 @@
-# luajit-imgui-lab
-Luajit Imgui Lab
+```text
+   __  _             __              __
+  / /_(_)___  __  __/ /_____  ____  / /____
+ / __/ / __ \/ / / / __/ __ \/ __ \/ / ___/
+/ /_/ / / / / /_/ / /_/ /_/ / /_/ / (__  )
+\__/_/_/ /_/\__, /\__/\____/\____/_/____/
+           /____/
+```
+
+A tiny toolbox for LuaJIT developers — many small offline tools in one Dear
+ImGui window, every one of them also callable from the command line.
+
+Status: **M2 done** — the window works (`make libs`, then `make run` or
+`make smoke`). Tool coverage is M3; see [PLAN.md](PLAN.md).
+
+```text
+$ make run
+┌─ tinytools ─────────────────────────────────────────────── [−] [□] [×] ┐
+│ search tools...        [ ] favorites only                              │
+├──────────────────┬─────────────────────────────────────────────────────┤
+│ Data             │ JSON                                                │
+│   JSON           │ options  mode=minify; indent=2                       │
+│   Base64         │ ┌─────────────────────────────────────────────────┐ │
+│ Converters       │ │ { "b": 1, "a": [1, 2, null] }                   │ │
+│   Number base    │ └─────────────────────────────────────────────────┘ │
+│ Generators       │ [Run] [Clear] [Copy output]                         │
+│   CRC32          │ {"a":[1,2,null],"b":1}                              │
+│   UUID v4        │                                                     │
+├──────────────────┴─────────────────────────────────────────────────────┤
+│ 5 tools | LuaJIT 2.1 | imgui 1.93 | FPS 60                             │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+## Quick start
+
+```bash
+git clone --recurse-submodules <url> tinytools && cd tinytools
+
+make test     # headless suite: no ImGui, no display needed
+make libs     # builds GLFW + the cimgui binding into build/out
+make run      # the window
+make smoke    # 300 frames in a hidden window, exits 0
+```
+
+Everything works offline. The CLI is the same code the GUI calls:
+
+```bash
+luajit apps/toolbox.lua --list
+luajit apps/toolbox.lua --run data.base64 --text hello
+luajit apps/toolbox.lua --run data.json --text '{"b":1,"a":null}' --opt mode=minify
+luajit apps/toolbox.lua --run num.base --text 1792454400 --opt time=epoch
+luajit apps/toolbox.lua --check      # dependencies + every selftest
+```
+
+Exit codes: `0` success · `1` tool/selftest/argument failure · `3` GUI
+requested but the binding is unavailable.
+
+## What is where
+
+```text
+apps/toolbox.lua        entry point (paths + cli.main)
+lib/cli.lua             arguments, dispatch, selftest runner
+lib/imguikit.lua        the only code that knows build/out: loads the binding,
+                        opens the window, applies DPI, always shuts down
+lib/shell.lua           sidebar (search, groups, favorites) + tool panel
+lib/tools/init.lua      registry: id, group, name, keywords, order
+lib/tools/<id>.lua      one module per tool; dots become underscores
+lib/detect.lua          clipboard detectors for smart paste
+lib/timer.lua           monotonic clock (QPC / clock_gettime)
+lib/check.lua           assertion recorder shared by selftests and tests
+lib/json.lua            rxi/json.lua 0.1.2 (MIT), patched to preserve null
+scripts/install_glue.lua  post-build: glue files, runtime DLL, binding prune
+tests/                  headless suites (`luajit tests/run.lua`)
+```
+
+## Tool contract
+
+- `run(input, opts) -> { text = string, json = table }` — pure, headless,
+  returns `nil, message` on bad input.
+- `selftest(t)` — assertions through `lib/check.lua`.
+- `draw(ig, st)` — optional; the shell falls back to a generic panel that
+  drives `run()` with an input box and a `k=v; k=v` options line.
+
+## Build notes worth knowing
+
+- The binding's `base.lua` binds some symbols *eagerly*, including features this
+  CMake configuration does not compile (FreeType, cimCTE). `install_glue.lua`
+  asks the DLL which symbols exist and comments out exactly the missing eager
+  lines — 2 of 1481 on a default build — so the module loads. Anything not
+  compiled is simply absent, and nothing in the shell calls it.
+- Windows `LoadLibrary` ignores `package.cpath`, so `imguikit` prepends
+  `build/out` to `PATH` before the binding loads. The MinGW runtime DLL
+  (`libwinpthread-1.dll`) is copied next to the others so `build/out` is
+  self-contained.
+- GLFW is built from the submodule (3.4), not taken from the system: the binding
+  needs `ImGui_ImplGlfw_GetContentScaleForMonitor`, which requires 3.3+.
+- `data.json` output is deterministic (sorted keys, own printer); `num.base`
+  does its own civil-date arithmetic so it never depends on the host timezone;
+  `gen.uuid` reads OS entropy and fails loudly rather than faking randomness.
+
+## Next
+
+M3: `data.jwt`, `text.{case,diff,pattern,escape}`, `lua.ffi_layout`,
+`lua.jitbench`, favorites/recents persisted to `state/`, smart-paste wired into
+the shell, and long jobs moved off the frame loop.
+
+## License
+
+MIT. `lib/json.lua` is rxi/json.lua 0.1.2, MIT; bundled dependencies
+(LuaJIT-ImGui, Dear ImGui, cimgui, GLFW, LuaJIT-GLFW, LuaJIT-GL) are MIT or
+zlib licensed.

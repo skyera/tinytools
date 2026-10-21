@@ -39,3 +39,11 @@ luac.out
 *.x86_64
 *.hex
 
+
+# Build output and local state
+/build/
+/state/
+tests/tmp*
+
+# ImGui window layout
+/imgui.ini

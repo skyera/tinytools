@@ -1,0 +1,10 @@
+[submodule "submodules/LuaJIT-ImGui"]
+	path = submodules/LuaJIT-ImGui
+	url = https://github.com/sonoro1234/LuaJIT-ImGui.git
+[submodule "submodules/LuaJIT-GLFW"]
+	path = submodules/LuaJIT-GLFW
+	url = https://github.com/sonoro1234/LuaJIT-GLFW.git
+	branch = lua_building
+[submodule "submodules/LuaJIT-GL"]
+	path = submodules/LuaJIT-GL
+	url = https://github.com/sonoro1234/LuaJIT-GL.git
