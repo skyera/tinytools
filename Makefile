@@ -2,7 +2,7 @@ LUAJIT ?= luajit
 OUT := $(CURDIR)/build/out
 GLUE := -static-libgcc -static-libstdc++
 
-.PHONY: test selftest list run smoke libs submodules help
+.PHONY: test selftest list run smoke libs dist submodules help
 
 help:
 	@echo "make test       run the headless test suite"
@@ -11,6 +11,7 @@ help:
 	@echo "make run        start the GUI"
 	@echo "make smoke      render 300 frames in a hidden window and exit"
 	@echo "make libs       build GLFW + cimgui into build/out"
+	@echo "make dist       assemble self-contained dist/tinytools (needs make libs)"
 	@echo "make submodules fetch the three binding submodules"
 
 test:
@@ -45,6 +46,10 @@ libs:
 	  -DCMAKE_SHARED_LINKER_FLAGS="$(GLUE)"
 	@cmake --build build/imgui --target install
 	@$(LUAJIT) scripts/install_glue.lua "$(OUT)"
+
+# Self-contained bundle: LuaJIT + sources + binding DLLs + launcher.
+dist:
+	@$(LUAJIT) scripts/package.lua
 
 submodules:
 	@git submodule update --init --recursive

@@ -40,8 +40,9 @@ luac.out
 *.hex
 
 
-# Build output and local state
+# Build output, packaged bundles and local state
 /build/
+/dist/
 /state/
 tests/tmp*
 

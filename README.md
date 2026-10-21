@@ -81,6 +81,31 @@ tests/                  headless suites (`luajit tests/run.lua`)
 - `draw(ig, st)` — optional; the shell falls back to a generic panel that
   drives `run()` with an input box and a `k=v; k=v` options line.
 
+## Packaging
+
+```bash
+make libs     # once, to have build/out
+make dist     # -> dist/tinytools/ (about 14 MB)
+```
+
+`dist/tinytools/` is self-contained: `luajit.exe` + `lua51.dll`, the app's
+`apps/` and `lib/`, the binding DLLs and glue under `build/out/`, and
+`tinytools.bat`. Copy or zip the folder anywhere; no LuaJIT, CMake or
+toolchain is needed on the target machine, and it runs from any working
+directory.
+
+```text
+tinytools.bat                 GUI
+tinytools.bat --list          same CLI as the checkout
+tinytools.bat --run data.base64 --text hello
+```
+
+The bundle keeps the repo layout because `apps/toolbox.lua` and `imguikit`
+resolve everything relative to their own files. `scripts/package.lua` strips
+the binding DLL copy (~70 MB of RelWithDebInfo symbols); set
+`TINYTOOLS_NO_STRIP=1` to keep them. Point `LUAJIT_EXE` at a specific
+`luajit.exe` when the one on `PATH` is not the one you want to ship.
+
 ## Build notes worth knowing
 
 - The binding's `base.lua` binds some symbols *eagerly*, including features this
