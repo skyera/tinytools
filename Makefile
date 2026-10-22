@@ -1,18 +1,21 @@
 LUAJIT ?= luajit
+PYTHON ?= python
 OUT := $(CURDIR)/build/out
 GLUE := -static-libgcc -static-libstdc++
 
-.PHONY: test test-gui selftest list run smoke libs dist submodules help
+.PHONY: test test-gui test-exe selftest list run smoke libs dist exe submodules help
 
 help:
 	@echo "make test       run the headless test suite"
 	@echo "make test-gui   check GUI interactions in a hidden window"
+	@echo "make test-exe   check the built Windows single EXE"
 	@echo "make selftest   run every tool's selftest"
 	@echo "make list       list tools"
 	@echo "make run        start the GUI"
 	@echo "make smoke      render 300 frames in a hidden window and exit"
 	@echo "make libs       build GLFW + cimgui into build/out"
 	@echo "make dist       assemble self-contained dist/tinytools (needs make libs)"
+	@echo "make exe        build dist/tinytools.exe on Windows (needs make libs)"
 	@echo "make submodules fetch the three binding submodules"
 
 test:
@@ -20,6 +23,9 @@ test:
 
 test-gui:
 	@$(LUAJIT) tests/gui_smoke.lua
+
+test-exe:
+	@$(PYTHON) -m unittest discover -s tests -p test_package_exe.py -v
 
 selftest:
 	@$(LUAJIT) apps/toolbox.lua --selftest
@@ -54,6 +60,10 @@ libs:
 # Self-contained bundle: LuaJIT + sources + binding DLLs + launcher.
 dist:
 	@$(LUAJIT) scripts/package.lua
+
+# Single Windows EXE: native launcher + compressed folder bundle.
+exe:
+	@$(PYTHON) scripts/package_exe.py
 
 submodules:
 	@git submodule update --init --recursive

@@ -115,6 +115,7 @@ function M.run(opts)
 
   local glfw, imgui, window, ig_impl
   local glfw_started, platform_started, renderer_started = false, false, false
+  local ini_path -- Keep the Lua string alive while ImGui holds its pointer.
   local frame = 0
   local ok, failure = xpcall(function()
     glfw = require "glfw"
@@ -161,6 +162,11 @@ function M.run(opts)
       local io = imgui.GetIO()
       io.ConfigFlags = imgui.lib.ImGuiConfigFlags_NavEnableKeyboard + io.ConfigFlags
       io.ConfigDpiScaleFonts = true
+      local state_dir = os.getenv("TINYTOOLS_STATE_DIR")
+      if state_dir then
+        ini_path = state_dir .. "/imgui.ini"
+        io.IniFilename = ini_path
+      end
     end)
 
     -- Track each backend separately: a partially initialized context must not

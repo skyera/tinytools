@@ -1,10 +1,12 @@
--- Favorites live beside the application, including in portable bundles.
+-- Folder bundles keep local settings; the single-EXE launcher supplies a
+-- stable state directory outside its versioned extraction cache.
 local ffi = require "ffi"
 local json = require "json"
 local M = {}
 local source = debug.getinfo(1, "S").source:gsub("^@", "")
 local dir = source:match("^(.*)[/\\][^/\\]*$") or "."
-M.path = dir .. "/../state/settings.json"
+local state_dir = os.getenv("TINYTOOLS_STATE_DIR") or (dir .. "/../state")
+M.path = state_dir .. "/settings.json"
 
 local wide
 if ffi.os == "Windows" then

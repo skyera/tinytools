@@ -64,9 +64,10 @@ is 65,535 bytes; the Paste button rejects larger clipboard contents without
 changing the input. Decoded NUL bytes appear as `\0` in the output preview and
 cannot be copied through the text clipboard.
 
-Favorites are saved to `state/settings.json` beside the application and survive
-restarts. A settings read/write failure appears in the GUI. This also works in
-portable bundles when their folder is writable.
+Source runs and folder bundles save favorites to `state/settings.json` beside
+the application. Favorites survive restarts; a settings read/write failure
+appears in the GUI. The folder must be writable to save settings. The single
+EXE uses the separate per-user location described below.
 
 ## What is where
 
@@ -120,6 +121,52 @@ resolve everything relative to their own files. `scripts/package.lua` strips
 the binding DLL copy (~70 MB of RelWithDebInfo symbols); set
 `TINYTOOLS_NO_STRIP=1` to keep them. Point `LUAJIT_EXE` at a specific
 `luajit.exe` when the one on `PATH` is not the one you want to ship.
+
+### Single Windows executable
+
+```text
+make exe       # -> dist/tinytools.exe
+make test-exe  # integration checks for the built EXE
+```
+
+Or run `python scripts/package_exe.py` directly. Building requires Windows,
+Python 3.9+, LuaJIT, MinGW-w64 `gcc` and `windres`, and the existing `make libs`
+output. Set `CC`, `WINDRES`, or `LUAJIT_EXE` to select different build tools.
+No packaging libraries or downloads are needed.
+
+Distribute **only `dist/tinytools.exe`**. Double-click it to open the GUI; the
+launcher does not create a console window. The same EXE accepts the CLI:
+
+```powershell
+.\dist\tinytools.exe --list | Out-Host
+.\dist\tinytools.exe --run data.base64 --text hello | Out-Host
+.\dist\tinytools.exe --run data.json --in input.json | Out-Host
+$LASTEXITCODE
+```
+
+`Out-Host` makes PowerShell wait for this GUI-subsystem executable. Scripts
+using a process API should wait for it and read its exit code. Arguments,
+stdin, stdout, stderr and tool exit codes are passed through. Relative input
+paths resolve against the caller's working directory. Launcher failures use
+exit code `125`.
+
+The EXE embeds a compressed bundle and uses Windows APIs to extract it; the
+target needs no LuaJIT installation, compiler, Python, 7-Zip or PowerShell.
+The current build targets Windows 10/11 x64 and uses their system C runtime.
+
+```text
+%LOCALAPPDATA%\tinytools\cache\<content-hash>\  extracted application files
+%LOCALAPPDATA%\tinytools\state\settings.json   favorites across upgrades
+%LOCALAPPDATA%\tinytools\state\imgui.ini      GUI layout
+```
+
+Every launch checks the cached files against embedded SHA-256 hashes and
+repairs missing or changed files. Concurrent launches share an extraction
+lock. New bundle contents get a separate cache directory while settings stay
+in the same location. Older caches are retained; they can be removed when
+the application is closed. Set `TINYTOOLS_HOME` to a writable location
+(for example `D:\Apps\tinytools-data`) to relocate both cache and state.
+The executable's own directory does not need to be writable.
 
 ## Build notes worth knowing
 

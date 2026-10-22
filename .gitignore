@@ -48,3 +48,7 @@ tests/tmp*
 
 # ImGui window layout
 /imgui.ini
+
+# Python build/test helpers
+__pycache__/
+*.py[cod]

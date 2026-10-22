@@ -20,6 +20,11 @@ controls, selectable output, clipboard actions, shortcuts, persisted favorites,
 frame pacing and guarded resource cleanup. M3 (more tools, recents, smart-paste
 UI, job pattern) is next.
 
+Packaging now includes `make exe`: a Windows launcher embeds the compressed
+bundle, validates/repairs its content-addressed per-user cache, and forwards
+CLI streams and exit codes. Single-EXE settings live outside that cache so
+favorites and layout survive upgrades; `make test-exe` covers this path.
+
 Build reality worth recording: upstream's `base.lua` eagerly binds symbols this
 CMake configuration does not compile (FreeType, cimCTE), so `install_glue.lua`
 prunes exactly the missing eager lines (2 of 1481 on a default build). Windows
@@ -283,9 +288,11 @@ state/settings.json      # theme, font scale, favorites, recents, auto-paste
 state/tools/<id>.json    # per-tool input/options, written on change (debounced)
 ```
 
-Gitignored, atomic writes (temp file + rename), never outside the repo. Deleting
-`state/` resets the app. No telemetry, no network, ever — the reason DevToys
-exists applies here too.
+Source checkouts and folder bundles use their local `state/` directory.
+The single-EXE launcher instead supplies `TINYTOOLS_STATE_DIR` under
+`%LOCALAPPDATA%\tinytools\state` (or `TINYTOOLS_HOME\state`) so state survives
+cache version changes. Writes are atomic (temp file + rename). Deleting the
+applicable state directory resets settings. No telemetry or network.
 
 ---
 
