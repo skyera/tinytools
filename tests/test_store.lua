@@ -1,0 +1,35 @@
+local store = require "store"
+local M = {}
+function M.run(t)
+  local source = debug.getinfo(1, "S").source:gsub("^@", "")
+  local dir = source:match("^(.*)[/\\][^/\\]*$") or "."
+  local path = dir .. "/tmp_favorites.json"
+  os.remove(path)
+  local ok, err = pcall(function()
+    local favorites, warning = store.load(path)
+    t:eq(next(favorites), nil, "missing settings use empty favorites")
+    t:eq(warning, nil, "first launch has no warning")
+    t:truthy(store.save({ ["data.json"] = true }, path), "favorites save")
+    t:eq(store.load(path)["data.json"], true, "favorites survive reload")
+    t:truthy(store.save({ ["gen.uuid"] = true }, path), "existing settings replaced")
+    local loaded = store.load(path)
+    t:eq(loaded["data.json"], nil, "unfavoriting survives reload")
+    t:eq(loaded["gen.uuid"], true, "replacement survives reload")
+    local saved, save_err = store.save({}, path .. "/settings.json")
+    t:eq(saved, nil, "unwritable destination is reported")
+    t:truthy(save_err, "write failure has a message")
+    t:eq(store.load(path)["gen.uuid"], true, "failed write preserves existing settings")
+    local f = assert(io.open(path, "wb"))
+    f:write("{broken")
+    f:close()
+    favorites, warning = store.load(path)
+    t:eq(next(favorites), nil, "corrupt settings fall back safely")
+    t:truthy(warning, "corrupt settings have a visible warning")
+    t:truthy(store.save({}, path), "can reset corrupt settings")
+    t:eq(next(store.load(path)), nil, "empty favorites survive reload")
+  end)
+  os.remove(path)
+  os.remove(path .. ".tmp")
+  t:truthy(ok, "store tests complete: " .. tostring(err))
+end
+return M

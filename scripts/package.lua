@@ -236,8 +236,8 @@ tinytools — portable build
   tinytools.bat --check         dependency probe + every selftest
 
 Everything runs from this folder: LuaJIT, the tool sources, the ImGui binding
-and its DLLs are all inside. Nothing is installed, nothing is written outside
-this directory except state/ when the app grows one.
+and its DLLs are all inside. Nothing is installed. Favorites are saved to
+state/settings.json inside this folder; the folder must be writable to save.
 
 Rebuild with `make dist` in the source checkout.
 ]])

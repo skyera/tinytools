@@ -2,10 +2,11 @@ LUAJIT ?= luajit
 OUT := $(CURDIR)/build/out
 GLUE := -static-libgcc -static-libstdc++
 
-.PHONY: test selftest list run smoke libs dist submodules help
+.PHONY: test test-gui selftest list run smoke libs dist submodules help
 
 help:
 	@echo "make test       run the headless test suite"
+	@echo "make test-gui   check GUI interactions in a hidden window"
 	@echo "make selftest   run every tool's selftest"
 	@echo "make list       list tools"
 	@echo "make run        start the GUI"
@@ -16,6 +17,9 @@ help:
 
 test:
 	@$(LUAJIT) tests/run.lua
+
+test-gui:
+	@$(LUAJIT) tests/gui_smoke.lua
 
 selftest:
 	@$(LUAJIT) apps/toolbox.lua --selftest

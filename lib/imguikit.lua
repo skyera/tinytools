@@ -92,12 +92,6 @@ end
 
 ------------------------------------------------------------------- run
 
-local function destroy(ig_impl, window, glfw)
-  if ig_impl then pcall(function() ig_impl:destroy() end) end
-  if window then pcall(function() window:destroy() end) end
-  if glfw then pcall(function() glfw.terminate() end) end
-end
-
 -- opts:
 --   title, w, h, visible (default true), frames (stop after N), fps (default 60),
 --   vsync (default 1), draw(ig, ui)
@@ -108,115 +102,131 @@ function M.run(opts)
   if type(draw) ~= "function" then
     return nil, "imguikit.run needs a draw function"
   end
+  local target_fps = opts.fps or 60
+  if type(target_fps) ~= "number" or target_fps ~= target_fps
+    or target_fps <= 0 or target_fps >= math.huge then
+    return nil, "fps must be a finite positive number"
+  end
 
   local ready, why = M.available()
   if not ready then
     return nil, "ImGui binding unavailable: " .. tostring(why)
   end
 
-  local glfw = require "glfw"
-  local gl = require "gl"
-  gl.set_loader(glfw)
-  local imgui = require "imgui.glfw"
-
-  local w = opts.w or 1180
-  local h = opts.h or 720
-  local visible = opts.visible ~= false
-
-  glfw.setErrorCallback(function(code, description)
-    io.stderr:write(string.format("GLFW error %s: %s\n", tostring(code),
-      ffi.string(description or "")))
-  end)
-
-  -- The binding's init() returns nothing and raises on failure.
-  local init_ok, init_err = pcall(glfw.init)
-  if not init_ok then
-    return nil, tostring(init_err)
-  end
-
-  if not visible then
-    glfw.hint(glfw.glfwc.GLFW_VISIBLE, 0)
-  end
-
-  local window_ok, window = pcall(glfw.Window, w, h, opts.title or "tinytools")
-  if not window_ok then
-    glfw.terminate()
-    return nil, tostring(window)
-  end
-  window:makeContextCurrent()
-  glfw.swapInterval(opts.vsync or 1)
-
-  local gl_functions, gl_constants = gl.libraries()
-  local ig_impl = imgui.Imgui_Impl_glfw_opengl3()
-
-  -- DPI and style, applied once.
-  local scale = 1
-  local scaled = pcall(function()
-    scale = tonumber(imgui.lib.ImGui_ImplGlfw_GetContentScaleForMonitor(glfw.getPrimaryMonitor()))
-  end)
-  if not scaled or not scale or scale <= 0 then scale = 1 end
-  pcall(function()
-    imgui.GetStyle():ScaleAllSizes(scale)
-    imgui.GetStyle().FontScaleDpi = scale
-  end)
-  pcall(function()
-    local io = imgui.GetIO()
-    io.ConfigFlags = imgui.lib.ImGuiConfigFlags_NavEnableKeyboard + io.ConfigFlags
-    io.ConfigDpiScaleFonts = true
-  end)
-
-  ig_impl:Init(window, true)
-
-  local target_fps = opts.fps or 60
-  local sleep_ms = 1000 / target_fps
+  local glfw, imgui, window, ig_impl
+  local glfw_started, platform_started, renderer_started = false, false, false
   local frame = 0
-  local fps = 0
-  local last = timer.now()
-  local failure
+  local ok, failure = xpcall(function()
+    glfw = require "glfw"
+    local gl = require "gl"
+    gl.set_loader(glfw)
+    imgui = require "imgui.glfw"
 
-  while not window:shouldClose() do
-    glfw.pollEvents()
+    local w = opts.w or 1180
+    local h = opts.h or 720
+    local visible = opts.visible ~= false
 
-    if (tonumber(window:getAttrib(glfw.glfwc.GLFW_ICONIFIED)) or 0) ~= 0 then
-      pcall(function() imgui.lib.ImGui_ImplGlfw_Sleep(10) end)
-    else
-      window:makeContextCurrent()
-      gl_functions.glClear(gl_constants.GL_COLOR_BUFFER_BIT)
+    glfw.setErrorCallback(function(code, description)
+      io.stderr:write(string.format("GLFW error %s: %s\n", tostring(code),
+        ffi.string(description or "")))
+    end)
 
-      ig_impl:NewFrame()
+    -- The binding's init() returns nothing and raises on failure.
+    glfw_started = true
+    glfw.init()
 
-      local ui = {
-        frame = frame,
-        dt = timer.now() - last,
-        fps = fps,
-        window = window,
-        kit = M,
-      }
-      last = timer.now()
-
-      local drawn, draw_err = pcall(draw, imgui, ui)
-      if not drawn then
-        failure = draw_err
-        break
-      end
-
-      ig_impl:Render()
-      window:swapBuffers()
-
-      if not opts.dont_sleep then
-        pcall(function() imgui.lib.ImGui_ImplGlfw_Sleep(sleep_ms) end)
-      end
-
-      fps = ui.dt > 0 and (1 / ui.dt) or 0
-      frame = frame + 1
+    if not visible then
+      glfw.hint(glfw.glfwc.GLFW_VISIBLE, 0)
     end
 
-    if opts.frames and frame >= opts.frames then break end
+    window = glfw.Window(w, h, opts.title or "tinytools")
+    window:makeContextCurrent()
+    local vsync = opts.vsync or 1
+    glfw.swapInterval(vsync)
+
+    local gl_functions, gl_constants = gl.libraries()
+    ig_impl = imgui.Imgui_Impl_glfw_opengl3()
+
+    -- DPI and style, applied once.
+    local scale = 1
+    local scaled = pcall(function()
+      scale = tonumber(imgui.lib.ImGui_ImplGlfw_GetContentScaleForMonitor(glfw.getPrimaryMonitor()))
+    end)
+    if not scaled or not scale or scale <= 0 then scale = 1 end
+    pcall(function()
+      imgui.GetStyle():ScaleAllSizes(scale)
+      imgui.GetStyle().FontScaleDpi = scale
+    end)
+    pcall(function()
+      local io = imgui.GetIO()
+      io.ConfigFlags = imgui.lib.ImGuiConfigFlags_NavEnableKeyboard + io.ConfigFlags
+      io.ConfigDpiScaleFonts = true
+    end)
+
+    -- Track each backend separately: a partially initialized context must not
+    -- call Shutdown on a backend whose Init failed.
+    platform_started = imgui.lib.ImGui_ImplGlfw_InitForOpenGL(window, true)
+    assert(platform_started, "GLFW ImGui backend initialization failed")
+    renderer_started = imgui.lib.ImGui_ImplOpenGL3_Init("#version 130")
+    assert(renderer_started, "OpenGL ImGui backend initialization failed")
+
+    local fps = 0
+    local last = timer.now()
+
+    while not window:shouldClose() do
+      local started = timer.now()
+      glfw.pollEvents()
+
+      if (tonumber(window:getAttrib(glfw.glfwc.GLFW_ICONIFIED)) or 0) ~= 0 then
+        pcall(function() imgui.lib.ImGui_ImplGlfw_Sleep(10) end)
+      else
+        window:makeContextCurrent()
+        gl_functions.glClear(gl_constants.GL_COLOR_BUFFER_BIT)
+
+        ig_impl:NewFrame()
+
+        local ui = {
+          frame = frame,
+          dt = timer.now() - last,
+          fps = fps,
+          window = window,
+          kit = M,
+        }
+        last = timer.now()
+
+        draw(imgui, ui)
+
+        ig_impl:Render()
+        window:swapBuffers()
+
+        if vsync == 0 and not opts.dont_sleep then
+          local remaining = (1 / target_fps - (timer.now() - started)) * 1000
+          if remaining >= 1 then imgui.lib.ImGui_ImplGlfw_Sleep(math.floor(remaining)) end
+        end
+
+        fps = ui.dt > 0 and (1 / ui.dt) or 0
+        frame = frame + 1
+      end
+
+      if opts.frames and frame >= opts.frames then break end
+    end
+
+  end, debug.traceback)
+
+  -- Attempt every cleanup even when another cleanup fails. Preserve the
+  -- original error so callers can diagnose initialization or frame failures.
+  local function cleanup(fn)
+    local cleaned, err = pcall(fn)
+    if not cleaned and ok then ok, failure = false, tostring(err) end
   end
+  if window then cleanup(function() window:makeContextCurrent() end) end
+  if renderer_started then cleanup(function() imgui.lib.ImGui_ImplOpenGL3_Shutdown() end) end
+  if platform_started then cleanup(function() imgui.lib.ImGui_ImplGlfw_Shutdown() end) end
+  if ig_impl then cleanup(function() imgui.DestroyContext(ig_impl.ctx) end) end
+  if window then cleanup(function() window:destroy() end) end
+  if glfw_started then cleanup(function() glfw.terminate() end) end
 
-  destroy(ig_impl, window, glfw)
-
-  if failure then return nil, tostring(failure) end
+  if not ok then return nil, tostring(failure) end
   return 0, frame
 end
 

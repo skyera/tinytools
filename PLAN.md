@@ -15,7 +15,10 @@ Project name: **tinytools** — a tiny toolbox for LuaJIT developers.
 
 Status: **M1 and M2 delivered** — registry, five tools, CLI, 155 headless checks,
 submodules + `make libs`, the ImGui shell and `--smoke` (300 frames, exit 0).
-M3 (more tools, persisted favorites, smart-paste UI, job pattern) is next.
+GUI polish delivered: viewport layout, resizable sidebar, tool-specific option
+controls, selectable output, clipboard actions, shortcuts, persisted favorites,
+frame pacing and guarded resource cleanup. M3 (more tools, recents, smart-paste
+UI, job pattern) is next.
 
 Build reality worth recording: upstream's `base.lua` eagerly binds symbols this
 CMake configuration does not compile (FreeType, cimCTE), so `install_glue.lua`

@@ -17,6 +17,8 @@ local suites = {
   "test_detect",
   "test_shell",
   "test_cli",
+  "test_store",
+  "test_imguikit",
 }
 
 local failures = 0

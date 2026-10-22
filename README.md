@@ -19,7 +19,7 @@ $ make run
 │ search tools...        [ ] favorites only                              │
 ├──────────────────┬─────────────────────────────────────────────────────┤
 │ Data             │ JSON                                                │
-│   JSON           │ options  mode=minify; indent=2                       │
+│   JSON           │ Mode [pretty v]  Indent [2]  [x] Sort keys           │
 │   Base64         │ ┌─────────────────────────────────────────────────┐ │
 │ Converters       │ │ { "b": 1, "a": [1, 2, null] }                   │ │
 │   Number base    │ └─────────────────────────────────────────────────┘ │
@@ -40,6 +40,7 @@ make test     # headless suite: no ImGui, no display needed
 make libs     # builds GLFW + the cimgui binding into build/out
 make run      # the window
 make smoke    # 300 frames in a hidden window, exits 0
+make test-gui # GUI interaction checks in a hidden window
 ```
 
 Everything works offline. The CLI is the same code the GUI calls:
@@ -55,6 +56,18 @@ luajit apps/toolbox.lua --check      # dependencies + every selftest
 Exit codes: `0` success · `1` tool/selftest/argument failure · `3` GUI
 requested but the binding is unavailable.
 
+The GUI has tool-specific dropdowns, checkboxes and numeric controls. Press
+**Ctrl+Enter** to run the selected tool, use **Paste** to replace its input,
+and select text in the read-only output pane or use **Copy output**. Input and
+output scroll independently; output wrapping can be toggled. The input limit
+is 65,535 bytes; the Paste button rejects larger clipboard contents without
+changing the input. Decoded NUL bytes appear as `\0` in the output preview and
+cannot be copied through the text clipboard.
+
+Favorites are saved to `state/settings.json` beside the application and survive
+restarts. A settings read/write failure appears in the GUI. This also works in
+portable bundles when their folder is writable.
+
 ## What is where
 
 ```text
@@ -63,6 +76,8 @@ lib/cli.lua             arguments, dispatch, selftest runner
 lib/imguikit.lua        the only code that knows build/out: loads the binding,
                         opens the window, applies DPI, always shuts down
 lib/shell.lua           sidebar (search, groups, favorites) + tool panel
+lib/tool_options.lua    GUI option controls for the five tools
+lib/store.lua           favorites persistence with atomic settings replacement
 lib/tools/init.lua      registry: id, group, name, keywords, order
 lib/tools/<id>.lua      one module per tool; dots become underscores
 lib/detect.lua          clipboard detectors for smart paste
@@ -78,8 +93,8 @@ tests/                  headless suites (`luajit tests/run.lua`)
 - `run(input, opts) -> { text = string, json = table }` — pure, headless,
   returns `nil, message` on bad input.
 - `selftest(t)` — assertions through `lib/check.lua`.
-- `draw(ig, st)` — optional; the shell falls back to a generic panel that
-  drives `run()` with an input box and a `k=v; k=v` options line.
+- The shell drives `run()` with shared input/output panes and controls defined
+  in `lib/tool_options.lua`; tool computation stays independent of ImGui.
 
 ## Packaging
 
@@ -126,7 +141,7 @@ the binding DLL copy (~70 MB of RelWithDebInfo symbols); set
 ## Next
 
 M3: `data.jwt`, `text.{case,diff,pattern,escape}`, `lua.ffi_layout`,
-`lua.jitbench`, favorites/recents persisted to `state/`, smart-paste wired into
+`lua.jitbench`, recents persisted to `state/`, smart-paste wired into
 the shell, and long jobs moved off the frame loop.
 
 ## License
