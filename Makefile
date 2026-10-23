@@ -3,7 +3,7 @@ PYTHON ?= python
 OUT := $(CURDIR)/build/out
 GLUE := -static-libgcc -static-libstdc++
 
-.PHONY: test test-gui test-exe selftest list run smoke libs dist exe submodules help
+.PHONY: test test-gui test-exe selftest list run smoke libs dist exe bundle submodules help
 
 help:
 	@echo "make test       run the headless test suite"
@@ -14,6 +14,7 @@ help:
 	@echo "make run        start the GUI"
 	@echo "make smoke      render 300 frames in a hidden window and exit"
 	@echo "make libs       build GLFW + cimgui into build/out"
+	@echo "make bundle     combine all app Lua files into tinytools_bundle.lua"
 	@echo "make dist       assemble self-contained dist/tinytools (needs make libs)"
 	@echo "make exe        build dist/tinytools.exe on Windows (needs make libs)"
 	@echo "make submodules fetch the three binding submodules"
@@ -56,6 +57,10 @@ libs:
 	  -DCMAKE_SHARED_LINKER_FLAGS="$(GLUE)"
 	@cmake --build build/imgui --target install
 	@$(LUAJIT) scripts/install_glue.lua "$(OUT)"
+
+# Combines all application Lua files into a single standalone Lua script.
+bundle:
+	@$(LUAJIT) scripts/bundle.lua
 
 # Self-contained bundle: LuaJIT + sources + binding DLLs + launcher.
 dist:
