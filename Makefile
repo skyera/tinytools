@@ -119,7 +119,7 @@ endif
 	  -DGLFW_BUILD_EXAMPLES=OFF -DGLFW_BUILD_TESTS=OFF -DGLFW_BUILD_DOCS=OFF
 	@cmake --build build/glfw --parallel --target install
 	@cmake -S submodules/LuaJIT-ImGui -B build/imgui -G "$(CMAKE_GENERATOR)" \
-	  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+	  -DCMAKE_BUILD_TYPE=Release \
 	  -DGLFW_PATH="$(OUT)" \
 	  -DIMPL_GLFW=ON -DIMPL_OPENGL3=ON -DIMPL_OPENGL2=OFF \
 	  -DIMPL_SDL=OFF -DIMPL_SDL3=OFF -DIMPL_EXTRAS=ON \
