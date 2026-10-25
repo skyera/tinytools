@@ -124,7 +124,8 @@ end
 local function copy_tree(from_dir, to_dir)
   local prefix = absolute(from_dir)
   local copied = 0
-  for _, path in ipairs(list_files(from_dir)) do
+  for _, path in ipairs(list_files(prefix)) do
+    path = absolute(path)
     local rel = path:sub(#prefix + 2)
     if rel ~= "" and copy(path, to_dir .. "/" .. rel) then copied = copied + 1 end
   end
@@ -210,10 +211,14 @@ if glue_files == 0 then fail("copied no binding glue from build/out/lua") end
 -- The binding is built RelWithDebInfo, so the unstripped DLL is ~70 MiB of
 -- debug info. Stripping the *copy* keeps the build tree debuggable; a missing
 -- strip is not fatal, the bundle is just larger.
-if is_windows and os.getenv("TINYTOOLS_NO_STRIP") == nil then
+if os.getenv("TINYTOOLS_NO_STRIP") == nil then
   for _, name in ipairs(needed) do
     local target = stage .. "/build/out/" .. name
-    os.execute('strip --strip-unneeded "' .. target:gsub("/", "\\") .. '" 2>nul')
+    if is_windows then
+      os.execute('strip --strip-unneeded "' .. target:gsub("/", "\\") .. '" 2>nul')
+    else
+      os.execute('strip --strip-unneeded "' .. target .. '" 2>/dev/null')
+    end
   end
 end
 
@@ -227,21 +232,37 @@ exit /b %ERRORLEVEL%
 ]]
 write(stage .. "/tinytools.bat", launcher:gsub("\n", "\r\n"))
 
+if not is_windows then
+  local sh_launcher = [[#!/bin/sh
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export TINYTOOLS_OUT="$HERE/build/out"
+export LD_LIBRARY_PATH="$HERE/build/out:$LD_LIBRARY_PATH"
+if [ -x "$HERE/luajit" ]; then
+  exec "$HERE/luajit" "$HERE/apps/toolbox.lua" "$@"
+else
+  exec luajit "$HERE/apps/toolbox.lua" "$@"
+fi
+]]
+  write(stage .. "/tinytools", sh_launcher)
+  os.execute('chmod +x "' .. stage .. '/tinytools" 2>/dev/null')
+end
+
+local cmd_name = is_windows and "tinytools.bat" or "./tinytools"
 local readme = string.format([[
 tinytools — portable build
 
-  tinytools.bat                 start the GUI
-  tinytools.bat --list          list tools
-  tinytools.bat --run data.base64 --text hello
-  tinytools.bat --check         dependency probe + every selftest
+  %s                 start the GUI
+  %s --list          list tools
+  %s --run data.base64 --text hello
+  %s --check         dependency probe + every selftest
 
 Everything runs from this folder: LuaJIT, the tool sources, the ImGui binding
 and its DLLs are all inside. Nothing is installed. Favorites are saved to
 state/settings.json inside this folder; the folder must be writable to save.
 
 Rebuild with `make dist` in the source checkout.
-]])
-write(stage .. "/README.txt", readme:gsub("\n", "\r\n"))
+]], cmd_name, cmd_name, cmd_name, cmd_name)
+write(stage .. "/README.txt", readme:gsub("\n", is_windows and "\r\n" or "\n"))
 
 ------------------------------------------------------------------- report
 
@@ -259,4 +280,4 @@ if #problems > 0 then
   os.exit(1)
 end
 
-print("dist: run it with " .. stage .. "/tinytools.bat")
+print("dist: run it with " .. stage .. (is_windows and "/tinytools.bat" or "/tinytools"))

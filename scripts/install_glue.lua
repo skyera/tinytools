@@ -117,10 +117,22 @@ local function symbol_lookup(dll)
   local ok = pcall(ffi.cdef, [[
     void *dlopen(const char *filename, int flags);
     void *dlsym(void *handle, const char *symbol);
+    char *dlerror(void);
   ]])
   if not ok then return nil, "cannot declare dl functions" end
+  local dir = dll:match("^(.*)[/\\][^/\\]*$") or "."
+  for _, name in ipairs({ "/libglfw.so.3", "/libglfw.so" }) do
+    if exists(dir .. name) then
+      ffi.C.dlopen(dir .. name, 258) -- RTLD_NOW | RTLD_GLOBAL
+      break
+    end
+  end
   local handle = ffi.C.dlopen(dll, 2) -- RTLD_NOW
-  if handle == nil then return nil, "dlopen failed for " .. dll end
+  if handle == nil then
+    local err = ffi.C.dlerror()
+    local msg = err ~= nil and ffi.string(err) or "unknown error"
+    return nil, "dlopen failed for " .. dll .. ": " .. msg
+  end
   return function(name) return ffi.C.dlsym(handle, name) ~= nil end
 end
 
@@ -162,6 +174,18 @@ if is_windows then
   if not exists(out .. "/glfw3.dll") and exists(bin_dll) then
     local ok, err = copy(bin_dll, out .. "/glfw3.dll", "glfw3.dll (from bin/)")
     if not ok then problems[#problems + 1] = err end
+  end
+else
+  -- On Linux/Unix, GLFW installs into lib/ or lib64/; the loader wants build/out flat.
+  for _, libdir in ipairs({ out .. "/lib", out .. "/lib64" }) do
+    for _, name in ipairs({ "libglfw.so.3", "libglfw.so" }) do
+      local src = libdir .. "/" .. name
+      local dst = out .. "/" .. name
+      if not exists(dst) and exists(src) then
+        local ok, err = copy(src, dst, name .. " (from " .. libdir .. "/)")
+        if not ok then problems[#problems + 1] = err end
+      end
+    end
   end
 end
 

@@ -34,8 +34,14 @@ end
 
 -- LoadLibrary on Windows does not consult package.cpath, so the directory has
 -- to be on PATH before any binding does ffi.load("glfw3").
+-- On Linux, ffi.load with an unqualified name does not consult package.cpath,
+-- so preload the build/out shared objects globally into the process.
 local function add_dll_dir(dir)
-  if ffi.os ~= "Windows" then return end
+  if ffi.os ~= "Windows" then
+    pcall(ffi.load, dir .. "/libglfw.so.3", true)
+    pcall(ffi.load, dir .. "/libcimgui_glfw.so", true)
+    return
+  end
 
   local ok = pcall(ffi.cdef, [[
     uint32_t GetEnvironmentVariableA(const char *name, char *buffer, uint32_t size);
@@ -61,7 +67,7 @@ function M.require_env(out)
   if M.out == out then return out end
 
   package.path = out .. "/lua/?.lua;" .. out .. "/lua/?/init.lua;" .. package.path
-  package.cpath = out .. "/?.dll;" .. out .. "/?.so;" .. package.cpath
+  package.cpath = out .. "/?.dll;" .. out .. "/?.so;" .. out .. "/lib?.so;" .. package.cpath
   add_dll_dir(out)
 
   M.out = out
